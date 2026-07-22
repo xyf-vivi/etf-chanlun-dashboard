@@ -177,7 +177,7 @@
   </div>
 
   <script src="chanlun-engine.js?v=2026072101"></script>
-  <script src="live-kline.js?v=2026072101"></script>
+  <script src="live-kline.js?v=2026072201"></script>
   <script>
     // ====== 标的元信息 ======
     const SYMBOL_META = {
@@ -191,7 +191,7 @@
     let SYMBOL = '510300';
     let SYMBOL_PREFIX = 'sh';
     let SYMBOL_FULL = 'sh510300';
-    window.__BUILD__ = 2026072101;
+    window.__BUILD__ = 2026072201;
 
     function curType() { return (SYMBOL_META[SYMBOL] || {}).type || 'etf'; }
     function curDigits() { return (SYMBOL_META[SYMBOL] || {}).digits || 3; }
@@ -779,6 +779,32 @@
       if (g && g.price > 0) { applyLivePrice(g); return; }
     }
 
+    // ====== 盘中增量K线更新（每20秒拉取新bar） ======
+    async function tickKlineUpdate() {
+      if (!DATA || !DATA.levels) return;
+      // 非交易时段不拉
+      const now = new Date();
+      const h = now.getHours(), m = now.getMinutes(), day = now.getDay();
+      if (day === 0 || day === 6) return; // 周末
+      const minutes = h * 60 + m;
+      const inMorning = minutes >= 570 && minutes < 690;   // 9:30-11:30
+      const inAfternoon = minutes >= 780 && minutes < 900;  // 13:00-15:00
+      if (!inMorning && !inAfternoon) return;
+      try {
+        if (window.LiveKline) {
+          LiveKline.setSymbol(SYMBOL_FULL);
+          const result = await LiveKline.updateAllLevels(DATA.levels);
+          let totalAdded = 0;
+          for (const lv in result) { totalAdded += result[lv].added; }
+          if (totalAdded > 0) {
+            recomputeAllLevels();
+            refreshSuggestionForCurrentLevel();
+            if (state.level) draw();
+          }
+        }
+      } catch (e) { /* 静默，不打扰 */ }
+    }
+
     // ====== 数据加载（静态部署版：直接读本地JSON） ======
     async function loadFull(code) {
       try {
@@ -835,6 +861,7 @@
       try {
         const snap = await loadFull(newCode);
         applySnap(snap);
+        if (window.LiveKline) LiveKline.setSymbol(SYMBOL_FULL);
         tickLive(); // 立即获取实时价
         refreshSuggestionForCurrentLevel();
       } catch (e) {
@@ -868,8 +895,10 @@
         updateBuildBadge();
         const snap = await loadFull(SYMBOL);
         applySnap(snap);
+        if (window.LiveKline) LiveKline.setSymbol(SYMBOL_FULL);
         tickLive();
         setInterval(tickLive, 3000);
+        setInterval(tickKlineUpdate, 20000);
       } catch (initErr) {
         console.error('init失败:', initErr);
         const dbg = document.getElementById('sBullets');

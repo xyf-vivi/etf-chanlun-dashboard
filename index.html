@@ -781,9 +781,15 @@
 
     // ====== 数据加载（静态部署版：直接读本地JSON） ======
     async function loadFull(code) {
-      const resp = await fetch(`chanpy_data_${code}.json`);
-      const raw = await resp.json();
-      return { symbol: code, levels: raw.levels || raw, source: 'static-json', quote: null };
+      try {
+        const resp = await fetch(`chanpy_data_${code}.json`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const raw = await resp.json();
+        return { symbol: code, levels: raw.levels || raw, source: 'static-json', quote: null };
+      } catch (e) {
+        console.error('loadFull error:', e);
+        throw e;
+      }
     }
     function applySnap(snap) {
       SNAP = snap;
@@ -867,7 +873,8 @@
       } catch (initErr) {
         console.error('init失败:', initErr);
         const dbg = document.getElementById('sBullets');
-        if (dbg) dbg.innerHTML = '<li style="color:#d44b45">加载失败: ' + (initErr.message||initErr) + '</li>';
+        const errMsg = initErr.message || String(initErr);
+        if (dbg) dbg.innerHTML = '<li style="color:#d44b45">加载失败: ' + errMsg + '</li><li style="color:#667085;font-size:12px">如果反复出现，请检查网络连接或稍后重试。</li>';
         const sb = document.getElementById('sBias'); if (sb) sb.textContent = '加载失败';
       }
     }

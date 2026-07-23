@@ -176,8 +176,8 @@
     </aside>
   </div>
 
-  <script src="chanlun-engine.js?v=2026072101"></script>
-  <script src="live-kline.js?v=2026072201"></script>
+  <script src="chanlun-engine.js?v=2026072301"></script>
+  <script src="live-kline.js?v=2026072301"></script>
   <script>
     // ====== 标的元信息 ======
     const SYMBOL_META = {
@@ -191,7 +191,7 @@
     let SYMBOL = '510300';
     let SYMBOL_PREFIX = 'sh';
     let SYMBOL_FULL = 'sh510300';
-    window.__BUILD__ = 2026072201;
+    window.__BUILD__ = 2026072301;
 
     function curType() { return (SYMBOL_META[SYMBOL] || {}).type || 'etf'; }
     function curDigits() { return (SYMBOL_META[SYMBOL] || {}).digits || 3; }
@@ -797,12 +797,13 @@
           let totalAdded = 0;
           for (const lv in result) { totalAdded += result[lv].added; }
           if (totalAdded > 0) {
+            console.log('[tickKlineUpdate] 新增K线', JSON.stringify(result));
             recomputeAllLevels();
             refreshSuggestionForCurrentLevel();
             if (state.level) draw();
           }
         }
-      } catch (e) { /* 静默，不打扰 */ }
+      } catch (e) { console.warn('[tickKlineUpdate] error', e.message); }
     }
 
     // ====== 数据加载（静态部署版：直接读本地JSON） ======

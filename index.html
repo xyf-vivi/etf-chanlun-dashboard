@@ -191,7 +191,7 @@
     let SYMBOL = '510300';
     let SYMBOL_PREFIX = 'sh';
     let SYMBOL_FULL = 'sh510300';
-    window.__BUILD__ = 2026072301;
+    window.__BUILD__ = 2026072302;
 
     function curType() { return (SYMBOL_META[SYMBOL] || {}).type || 'etf'; }
     function curDigits() { return (SYMBOL_META[SYMBOL] || {}).digits || 3; }
@@ -720,7 +720,24 @@
         for (const lv of ['daily', '30min', '15min', '5min', '1min']) {
           const grp = DATA.levels[lv];
           if (!grp || !grp.bars || !grp.bars.length) continue;
-          const last = grp.bars[grp.bars.length - 1];
+          let last = grp.bars[grp.bars.length - 1];
+          // 日线特殊处理：如果最后一根不是今天的，创建今天的实时bar
+          if (lv === 'daily') {
+            const today = quote.date ? quote.date.replace(/-/g,'') : '';
+            const lastDate = last.time ? last.time.split(' ')[0].replace(/-/g,'') : '';
+            if (today && lastDate && today !== lastDate) {
+              // 创建今天的盘中日线bar
+              grp.bars.push({
+                time: today.slice(0,4)+'-'+today.slice(4,6)+'-'+today.slice(6,8)+' 00:00:00',
+                open: quote.open || livePrice,
+                high: quote.high || livePrice,
+                low: quote.low || livePrice,
+                close: livePrice,
+                vol: 0, dif: 0, dea: 0, macd: 0,
+              });
+              last = grp.bars[grp.bars.length - 1];
+            }
+          }
           last.close = livePrice;
           if (livePrice > last.high) last.high = livePrice;
           if (livePrice < last.low) last.low = livePrice;
@@ -793,7 +810,13 @@
       try {
         if (window.LiveKline) {
           LiveKline.setSymbol(SYMBOL_FULL);
+          // 先更新分钟级别
           const result = await LiveKline.updateAllLevels(DATA.levels);
+          // 再更新日线（单独拉日K增量）
+          if (DATA.levels.daily) {
+            const dayResult = await updateDailyLevel();
+            result.daily = dayResult;
+          }
           let totalAdded = 0;
           for (const lv in result) { totalAdded += result[lv].added; }
           if (totalAdded > 0) {
@@ -804,6 +827,16 @@
           }
         }
       } catch (e) { console.warn('[tickKlineUpdate] error', e.message); }
+    }
+
+    // 盘中日线增量更新
+    async function updateDailyLevel() {
+      if (!DATA.levels.daily || !DATA.levels.daily.bars) return { added: 0, updated: 0 };
+      if (!window.LiveKline) return { added: 0, updated: 0 };
+      try {
+        const newBars = await LiveKline.fetchDayHistory(3);
+        return LiveKline.mergeIncremental(DATA.levels.daily.bars, newBars);
+      } catch (e) { return { added: 0, updated: 0 }; }
     }
 
     // ====== 数据加载（静态部署版：直接读本地JSON） ======

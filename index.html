@@ -102,6 +102,7 @@
             <option value="588200">588200 科创芯片ETF</option>
             <option value="159567">159567 港股创新药ETF</option>
             <option value="588170">588170 科创半导体ETF华夏</option>
+            <option value="KOSPI">KOSPI 韩国综合指数（日K）</option>
           </select></h1>
           <div class="sub" id="mSub">通达信MCP · 五级联立 · 缠论结构实时计算</div>
         </div>
@@ -186,6 +187,7 @@
       '588200':  { name: '科创芯片ETF',        prefix: 'sh', type: 'etf', digits: 3 },
       '159567':  { name: '港股创新药ETF',      prefix: 'sz', type: 'etf', digits: 3 },
       '588170':  { name: '科创半导体ETF华夏',  prefix: 'sh', type: 'etf', digits: 3 },
+      'KOSPI':   { name: '韩国KOSPI指数',      prefix: 'kr', type: 'index', digits: 2 },
     };
 
     let SYMBOL = '510300';
@@ -792,6 +794,7 @@
       bar.innerHTML = cells.join('');
     }
     async function tickLive() {
+      if (curType() === 'index') return; // 指数类标的（如KOSPI）腾讯实时报价不支持，跳过
       const g = await fetchGtimg();
       if (g && g.price > 0) { applyLivePrice(g); return; }
     }
@@ -799,6 +802,7 @@
     // ====== 盘中增量K线更新（每20秒拉取新bar） ======
     async function tickKlineUpdate() {
       if (!DATA || !DATA.levels) return;
+      if (curType() === 'index') return; // 指数类标的分钟K无数据源，跳过盘中增量
       // 非交易时段不拉
       const now = new Date();
       const h = now.getHours(), m = now.getMinutes(), day = now.getDay();
@@ -854,7 +858,7 @@
     function applySnap(snap) {
       SNAP = snap;
       DATA = { symbol: snap.symbol || SYMBOL, source: snap.source || '', levels: snap.levels || {} };
-      levels = ['daily', '30min', '15min', '5min', '1min'].filter(l => DATA.levels[l]);
+      levels = ['daily', '30min', '15min', '5min', '1min'].filter(l => DATA.levels[l] && DATA.levels[l].bars && DATA.levels[l].bars.length > 0);
       state.level = levels.includes('1min') ? '1min' : levels[levels.length - 1];
       state.count = initCount[state.level] || (DATA.levels[state.level] ? DATA.levels[state.level].bars.length : 300);
       state.start = Math.max(0, (DATA.levels[state.level] ? DATA.levels[state.level].bars.length : 0) - state.count);

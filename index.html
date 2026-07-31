@@ -178,6 +178,7 @@
   <script src="live-kline.js?v=2026072301"></script>
   <script>
     // ====== 标的元信息 ======
+    // 保留标的：588170
     const SYMBOL_META = {
       '510300':  { name: '沪深300ETF华泰柏瑞', prefix: 'sh', type: 'etf', digits: 3 },
       '588170':  { name: '科创半导体ETF华夏',  prefix: 'sh', type: 'etf', digits: 3 },
@@ -220,9 +221,13 @@
     }
     function resizeCanvas() {
       const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.floor(rect.width * dpr);
-      canvas.height = Math.floor(rect.height * dpr);
+      const width = Math.max(1, Math.floor(rect.width * dpr));
+      const height = Math.max(1, Math.floor(rect.height * dpr));
+      if (canvas.width === width && canvas.height === height) return;
+      canvas.width = width;
+      canvas.height = height;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       draw();
     }
@@ -452,6 +457,12 @@
       renderSide();
     }
 
+    let drawFrame = 0;
+    function requestDraw() {
+      if (drawFrame) return;
+      drawFrame = requestAnimationFrame(() => { drawFrame = 0; draw(); });
+    }
+
     function renderTabs() {
       const tabs = document.getElementById('tabs');
       tabs.innerHTML = '';
@@ -463,7 +474,7 @@
           state.level = lv;
           state.count = initCount[lv] || levelData().bars.length;
           state.start = Math.max(0, levelData().bars.length - state.count);
-          renderTabs(); draw();
+          renderTabs(); requestDraw();
           refreshSuggestionForCurrentLevel();
         };
         tabs.appendChild(btn);
@@ -547,7 +558,7 @@
       state.start = Math.max(0, levelData().bars.length - state.count); draw();
     };
     document.getElementById('refreshStruct').onclick = () => { refreshStructure(); };
-    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('resize', () => { cancelAnimationFrame(drawFrame); drawFrame = 0; resizeCanvas(); });
 
     // ====== 缠论引擎调用 ======
     function recomputeLevel(lv) {
@@ -761,7 +772,7 @@
       document.getElementById('sBullets').innerHTML = (s.bullets || []).map(t => `<li>${t}</li>`).join('');
       document.getElementById('sRisk').textContent = s.risk || '';
       renderLiveBar(s, quote);
-      if (state.level) draw();
+      if (state.level) requestDraw();
     }
     function renderLiveBar(s, quote) {
       const bar = document.getElementById('sLiveBar');
@@ -787,10 +798,23 @@
       }
       bar.innerHTML = cells.join('');
     }
+    let liveRequestId = 0;
+    let liveRequestInFlight = false;
+
     async function tickLive() {
-      if (curType() === 'index') return; // 指数类标的（如KOSPI）腾讯实时报价不支持，跳过
+      if (curType() === 'index') return; // 指数类标的（如KOSPI）腾讯实时报价不支持，跳过盘中增量
+      if (liveRequestInFlight) return;
+      const requestId = ++liveRequestId;
+      liveRequestInFlight = true;
       const g = await fetchGtimg();
-      if (g && g.price > 0) { applyLivePrice(g); return; }
+      if (requestId !== liveRequestId) { liveRequestInFlight = false; return; }
+      if (g && g.price > 0) { applyLivePrice(g); liveRequestInFlight = false; return; }
+      try {
+        const snap = await fetch(`/api/snapshot?symbol=${SYMBOL}`).then(r => r.json());
+        if (requestId === liveRequestId && snap && snap.quote) applyLivePrice(snap.quote);
+      } catch (e) {} finally {
+        if (requestId === liveRequestId) liveRequestInFlight = false;
+      }
     }
 
     // ====== 盘中增量K线更新（每20秒拉取新bar） ======
